@@ -37,7 +37,6 @@ bool drop_global_bracket(std::string& str)
 
 RE::RE(std::string pattern)
 {
-    //str_pattern = pattern;
     this -> pattern = pattern;
 }
 RE::~RE() {}
@@ -262,6 +261,15 @@ RE_tree::RE_tree(RE pattern_obj)
             return;
         }
     }
+}
+RE_tree::operator bool() const 
+{
+    if(op == TERMINAL)
+        return value >= ENUM_CNT;
+    else if(op == KLEENE_STAR || op == PLUS)
+        return left != nullptr;
+    else
+        return left != nullptr && right != nullptr; 
 }
 RE_tree::~RE_tree()
 {
