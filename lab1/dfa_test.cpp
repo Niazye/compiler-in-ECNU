@@ -60,8 +60,8 @@ int main()
     constant_re.parse_pattern();
     constant_re.print_pattern();
 
-    RE_tree constant_tree(constant_re);
-
+    RE_tree constant_re_tree(constant_re);
+    NFA constant_nfa(constant_re_tree);
     return 0;
     
 }
