@@ -87,7 +87,15 @@ public:
 
 class DFA
 {
-
+    std::shared_ptr<state> start_state;
+    std::shared_ptr<state> final_state;
+public:
+    DFA();
+    ~DFA();
+    DFA(const NFA& nfa);
+    void minimize();
+    bool match(const std::string& input);
+    
 };
 
 
