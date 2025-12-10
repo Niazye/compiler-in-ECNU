@@ -1,8 +1,5 @@
 #include "DFA.h"
-#include <algorithm>
-#include <memory>
-#include <queue>
-#include <unordered_map>
+
 void trim_inplace(std::string& str) {
     size_t start = str.find_first_not_of(" \t\n\r");
     if (start == std::string::npos) {
@@ -16,7 +13,6 @@ bool pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<s
 {
     return a.first.length() > b.first.length();
 }
-
 bool drop_global_bracket(std::string& str, std::vector<bool>& op_pattern)
 {
     if (str.front() == LEFT_BRACKET && str.back() == RIGHT_BRACKET && op_pattern.front() == OPTR && op_pattern.back() == OPTR)
@@ -318,6 +314,7 @@ RE_tree::operator bool() const
 RE_tree::~RE_tree()
 {
 }
+
 NFA::NFA(const RE_tree& re_tree)
 {
     assert(re_tree);
