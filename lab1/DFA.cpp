@@ -1,5 +1,6 @@
 #include "DFA.h"
 #include <algorithm>
+#include <memory>
 void trim_inplace(std::string& str) {
     size_t start = str.find_first_not_of(" \t\n\r");
     if (start == std::string::npos) {
@@ -205,8 +206,13 @@ void RE::print_pattern()
     std::cout << std::endl;
 }
 
-RE_tree::RE_tree(RE_operator oper, char val, RE_tree *l, RE_tree *r)
-    : op(oper), value(val), left(l), right(r) {}
+RE_tree::RE_tree(RE_operator oper, char val, std::unique_ptr<RE_tree> l, std::unique_ptr<RE_tree> r)
+    {
+    op = oper;
+value = val;
+left = std::move(l);
+right = std::move(r);
+}
 RE_tree::RE_tree(RE pattern_obj)
 {
     std::string pattern = pattern_obj.getPattern();
@@ -217,7 +223,8 @@ RE_tree::RE_tree(RE pattern_obj)
     {
         op = TERMINAL;
         value = pattern[0];
-        left = right = nullptr;
+        left = nullptr;
+        right = nullptr;
         return;
     }
     for (int i = 0; i < pattern.length(); i++)
@@ -231,24 +238,26 @@ RE_tree::RE_tree(RE pattern_obj)
             if (pattern[i] == UNION)
             {
                 op = UNION;
-                left = new RE_tree(RE(pattern.substr(0, i)));
-                right = new RE_tree(RE(pattern.substr(i + 1)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
+                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1)));
             }
             else if (pattern[i] == KLEENE_STAR)
             {
                 op = KLEENE_STAR;
-                left = right = new RE_tree(RE(pattern.substr(0, i)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
+                right = nullptr;
             }
             else if (pattern[i] == PLUS)
             {
                 op = PLUS;
-                left = right = new RE_tree(RE(pattern.substr(0, i)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
+                right = nullptr;
             }
             else if (pattern[i] == CONCAT)
             {
                 op = CONCAT;
-                left = new RE_tree(RE(pattern.substr(0, i)));
-                right = new RE_tree(RE(pattern.substr(i + 1)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
+                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1)));
             }
             return;
         }
@@ -256,7 +265,5 @@ RE_tree::RE_tree(RE pattern_obj)
 }
 RE_tree::~RE_tree()
 {
-    delete left;
-    delete right;
 }
 

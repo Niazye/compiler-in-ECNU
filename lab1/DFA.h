@@ -7,6 +7,7 @@
 #include <list>
 #include <cassert>
 #include <iostream>
+#include <memory>
 
 void trim_inplace(std::string& str);
 
@@ -29,10 +30,10 @@ class RE_tree
 {
     RE_operator op;
     char value;
-    RE_tree* left;
-    RE_tree* right;
+    std::unique_ptr<RE_tree> left;
+    std::unique_ptr<RE_tree> right;
 public:
-    RE_tree(RE_operator oper, char val = 0, RE_tree* l = nullptr, RE_tree* r = nullptr);
+    RE_tree(RE_operator oper, char val = 0, std::unique_ptr<RE_tree> l = nullptr, std::unique_ptr<RE_tree> r = nullptr);
     RE_tree(RE pattern_obj);
     ~RE_tree();
 };
