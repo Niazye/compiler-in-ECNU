@@ -12,22 +12,22 @@ int main()
     oct_inte    -> 0 oct_digit+
     dec_inte    -> (dec_digit_no_zero) dec_digit* 
     hex_inte    -> 0(x|X) hex_digit+
-    opt_inte_suf     -> $ | unsigned_suf | long_suf | (unsigned_suf long_suf) | (long_suf unsigned_suf)
+    opt_inte_suf     -> @ | unsigned_suf | long_suf | (unsigned_suf long_suf) | (long_suf unsigned_suf)
     
     frac        -> (dec_frac | hex_frac) opt_frac_suf
     dec_frac    -> dec_base dec_opt_exp
     hex_frac    -> 0(x|X) hex_base hex_opt_exp
     dec_base    -> (dec_digit+ \. dec_digit*) | (dec_digit* \. dec_digit+) | (dec_digit+)
-    dec_opt_exp -> $ | ((e | E) opt_sign dec_inte)
+    dec_opt_exp -> @ | ((e | E) opt_sign dec_inte)
     hex_base    -> (hex_digit+ \. hex_digit*) | (hex_digit* \. hex_digit+) | (hex_digit+)
-    hex_opt_exp -> $ | ((p | P) opt_sign hex_inte)
-    opt_frac_suf    -> $ | float_suf | long_double_suf
+    hex_opt_exp -> @ | ((p | P) opt_sign hex_inte)
+    opt_frac_suf    -> @ | float_suf | long_double_suf
     
     unsigned_suf        -> u | U
     long_suf    -> l | L | ll | LL
     float_suf   -> f | F
     long_double_suf -> l | L
-    opt_sign    -> $ | \+ | -
+    opt_sign    -> @ | \+ | -
     bin_digit   -> 0 | 1
     oct_digit   -> 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
     dec_digit   -> 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
