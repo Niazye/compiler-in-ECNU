@@ -67,7 +67,7 @@ public:
 struct state
 {
     bool is_final;
-    std::list<transfer_t> transfer;
+    std::list<transfer_t> transfers;
 };
 
 class NFA
@@ -79,11 +79,10 @@ public:
     ~NFA();
     NFA(const NFA& other);
     NFA(const char terminal);
-    bool onion(const NFA& other);
-    bool concat(const NFA& other);
+    bool union_other(const NFA& other);
+    bool concat_other(const NFA& other);
     bool kleene_star();
     bool plus();
-
 };
 
 class DFA

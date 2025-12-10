@@ -1,6 +1,8 @@
 #include "DFA.h"
 #include <algorithm>
 #include <memory>
+#include <queue>
+#include <unordered_map>
 void trim_inplace(std::string& str) {
     size_t start = str.find_first_not_of(" \t\n\r");
     if (start == std::string::npos) {
@@ -196,7 +198,7 @@ void RE::parse_pattern()
                 (op_pattern.back() == OPTR && pattern.back() == PLUS            && to_type == OPTR && to_push == LEFT_BRACKET))
             {
                 op_pattern.push_back(OPTR);
-            pattern.push_back(CONCAT);
+                pattern.push_back(CONCAT);
             }
         }
         op_pattern.push_back(to_type);
@@ -243,11 +245,11 @@ void RE::print_pattern()
 }
 
 RE_tree::RE_tree(RE_operator oper, char val, std::unique_ptr<RE_tree> l, std::unique_ptr<RE_tree> r)
-    {
+{
     op = oper;
-value = val;
-left = std::move(l);
-right = std::move(r);
+    value = val;
+    left = std::move(l);
+    right = std::move(r);
 }
 RE_tree::RE_tree(RE pattern_obj)
 {
@@ -316,4 +318,123 @@ RE_tree::operator bool() const
 RE_tree::~RE_tree()
 {
 }
+NFA::NFA(const RE_tree& re_tree)
+{
+    assert(re_tree);
+    std::unique_ptr<NFA> left, right;
+    
+    switch (re_tree.op)
+    {
+        case TERMINAL:
+            *this = NFA(re_tree.value);
+            break;
+        case UNION:
+            *this = NFA(*re_tree.left);
+            this -> union_other(NFA(*re_tree.right));
+            break;
+        case CONCAT:
+            *this = NFA(*re_tree.left);
+            this -> concat_other(NFA(*re_tree.right));
+            break;
+        case KLEENE_STAR:
+            *this = NFA(*re_tree.left);
+            this -> kleene_star();
+            break;
+        case PLUS:
+            *this = NFA(*re_tree.left);
+            this -> plus();
+            break;
+    }
+}
+NFA::NFA(const char terminal)
+{
+    start_state = std::make_shared<state>();
+    start_state -> is_final = 0;
+    start_state -> transfers.push_back({terminal, std::make_shared<state> ()});
+    final_state = start_state -> transfers.back().second;
+    final_state -> is_final = 1;
+}
+bool NFA::union_other(const NFA& other)
+{
+    auto copyed_other = NFA(other);
+    std::shared_ptr<state> new_start_state = std::make_shared<state>(), new_final_state = std::make_shared<state>();
+    new_start_state -> is_final = 0;
+    new_final_state -> is_final = 1;
+    new_start_state -> transfers.push_back({'\0', this -> start_state});
+    new_start_state -> transfers.push_back({'\0', copyed_other.start_state});
+    this -> final_state -> is_final = 0;
+    this -> final_state -> transfers.push_back({'\0', new_final_state});
+    copyed_other.final_state -> is_final = 0;
+    copyed_other.final_state -> transfers.push_back({'\0', new_final_state});
+    this -> start_state = new_start_state;
+    this -> final_state = new_final_state;
+    return true;
+}
+bool NFA::concat_other(const NFA& other)
+{
+    auto copyed_other = NFA(other);
+    this -> final_state -> is_final = 0;
+    this -> final_state -> transfers.push_back({'\0', copyed_other.start_state});
+    return true;
+}
+bool NFA::kleene_star()
+{
+    auto new_start_state = std::make_shared<state>(), new_final_state = std::make_shared<state>();
+    new_start_state -> is_final = 0;
+    new_final_state -> is_final = 1;
+    new_start_state -> transfers.push_back({'\0', this -> start_state});
+    new_start_state -> transfers.push_back({'\0', new_final_state});
+    this -> final_state -> is_final = 0;
+    this -> final_state -> transfers.push_back({'\0', this -> start_state});
+    this -> final_state -> transfers.push_back({'\0', new_final_state});
+    this -> start_state = new_start_state;
+    this -> final_state = new_final_state;
+    return true;
+}
+bool NFA::plus()
+{
+    concat_other(kleene_star());
+    return true;
+}
+NFA::~NFA()
+{
+    // To be implemented
+}
+NFA::NFA(const NFA& other)
+{
+    std::queue<std::shared_ptr<state>> to_visit;
+    std::unordered_map<std::shared_ptr<state>, std::shared_ptr<state>> copyed_state_map;
 
+    std::shared_ptr<state> new_start_state = std::make_shared<state>();
+    new_start_state -> is_final = other.start_state -> is_final;
+    copyed_state_map[other.start_state] = new_start_state;
+    for (auto& transfer: other.start_state -> transfers)
+    {
+        std::shared_ptr<state> new_transfer_state = std::make_shared<state>();
+        copyed_state_map[transfer.second] = new_transfer_state;
+        new_start_state -> transfers.push_back({transfer.first, new_transfer_state});
+        to_visit.push(transfer.second);
+        new_transfer_state -> is_final = transfer.second -> is_final;
+    }
+
+    while (!to_visit.empty()) 
+    {
+        auto cur_old_state = to_visit.front();
+        to_visit.pop();
+
+        auto copyed_cur_state = copyed_state_map[cur_old_state];
+        copyed_cur_state -> is_final = cur_old_state -> is_final;
+        for (auto& transfer: cur_old_state -> transfers)
+        {
+            if (copyed_state_map.find(transfer.second) != copyed_state_map.end())
+                continue;
+            std::shared_ptr<state> new_transdef_state = std::make_shared<state>();
+            copyed_state_map[transfer.second] = new_transdef_state;
+            copyed_cur_state -> transfers.push_back({transfer.first, new_transdef_state});
+            to_visit.push(transfer.second);
+            new_transdef_state -> is_final = transfer.second -> is_final;            
+        }
+    }
+    this -> start_state = new_start_state;
+    this -> final_state = copyed_state_map[other.final_state];
+}
