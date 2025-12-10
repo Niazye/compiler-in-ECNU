@@ -15,34 +15,37 @@ bool pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<s
     return a.first.length() > b.first.length();
 }
 
-bool drop_global_bracket(std::string& str)
+bool drop_global_bracket(std::string& str, std::vector<bool>& op_pattern)
 {
-    if (str.front() == LEFT_BRACKET && str.back() == RIGHT_BRACKET)
+    if (str.front() == LEFT_BRACKET && str.back() == RIGHT_BRACKET && op_pattern.front() == OPTR && op_pattern.back() == OPTR)
     {
         int bracket_count = 0;
         for (int i = 0; i < str.length(); i++)
         {
-            if (str[i] == LEFT_BRACKET)
+            if (str[i] == LEFT_BRACKET && op_pattern[i] == OPTR)
                 bracket_count++;
-            else if (str[i] == RIGHT_BRACKET)
+            else if (str[i] == RIGHT_BRACKET && op_pattern[i] == OPTR)
                 bracket_count--;
             if (bracket_count == 0 && i != str.length() - 1)
                 return 0;
         }
         str = str.substr(1, str.length() - 2);
+        op_pattern.erase(op_pattern.begin());
+        op_pattern.pop_back();
         return 1;
     }
     return 0;
 }
 
-RE::RE(std::string pattern)
+RE::RE(std::string pattern, std::vector<bool> op_pattern)
 {
     this -> pattern = pattern;
+    this -> op_pattern = op_pattern;
 }
 RE::~RE() {}
-std::string RE::getPattern()
+std::pair<std::string, std::vector<bool>> RE::getPattern()
 {
-    return pattern;
+    return {pattern, op_pattern};
 }
 void RE::add_pattern_line(std::string input_pattern)
 {
@@ -73,57 +76,77 @@ void RE::merge_patterns()
         }
     }
     str_pattern = defination_patterns[0].second;
+}
+void RE::parse_pattern()
+{
     for (auto itr = str_pattern.begin(); itr != str_pattern.end(); itr++)
     {
         if (isspace(*itr))
             continue;
         char to_push;
+        RE_char_type to_type;
         if (*itr == '\\')
         {
             switch (*(itr + 1))
             {
             case 'n':
                 to_push = '\n';
+                to_type = CHAR;
                 itr++;
                 break;
             case 't':
                 to_push = '\t';
+                to_type = CHAR;
                 itr++;
                 break;
             case 'r':
                 to_push = '\r';
+                to_type = CHAR;
                 itr++;
                 break;
             case '+':
                 to_push = '+';
+                to_type = CHAR;
                 itr++;
                 break;
             case '*':
                 to_push = '*';
+                to_type = CHAR;
                 itr++;
                 break;
             case '|':
                 to_push = '|';
+                to_type = CHAR;
                 itr++;
                 break;
             case '(':
                 to_push = '(';
+                to_type = CHAR;
                 itr++;
                 break;
             case ')':
                 to_push = ')';
+                to_type = CHAR;
                 itr++;
                 break;
             case '.':
                 to_push = '.';
+                to_type = CHAR;
+                itr++;
+                break;
+            case '0':
+                to_push = '\0';
+                to_type = CHAR;
                 itr++;
                 break;
             case '\\':
                 to_push = '\\';
+                to_type = CHAR;
                 itr++;
                 break;
             default:
                 to_push = *itr;
+                to_type = CHAR;
                 break;
             }
         }
@@ -133,51 +156,65 @@ void RE::merge_patterns()
             {
             case '+':
                 to_push = PLUS;
+                to_type = OPTR;
                 break;
             case '*':
                 to_push = KLEENE_STAR;
+                to_type = OPTR;
                 break;
             case '|':
                 to_push = UNION;
+                to_type = OPTR;
                 break;
             case '(':
                 to_push = LEFT_BRACKET;
+                to_type = OPTR;
                 break;
             case ')':
                 to_push = RIGHT_BRACKET;
+                to_type = OPTR;
                 break;
             case '.':
                 to_push = CONCAT;
+                to_type = OPTR;
                 break;
             default:
                 to_push = *itr;
+                to_type = CHAR;
                 break;
             }
         }
-        if (!pattern.empty() && pattern.back() > ENUM_CNT && to_push > ENUM_CNT)
+        if(!pattern.empty())
+        {
+            if ((op_pattern.back() == CHAR                                      && to_type == CHAR                           ) ||
+                (op_pattern.back() == CHAR                                      && to_type == OPTR && to_push == LEFT_BRACKET) ||  
+                (op_pattern.back() == OPTR && pattern.back() == RIGHT_BRACKET   && to_type == CHAR                           ) ||
+                (op_pattern.back() == OPTR && pattern.back() == RIGHT_BRACKET   && to_type == OPTR && to_push == LEFT_BRACKET) ||
+                (op_pattern.back() == OPTR && pattern.back() == KLEENE_STAR     && to_type == CHAR                           ) ||
+                (op_pattern.back() == OPTR && pattern.back() == PLUS            && to_type == CHAR                           ) ||
+                (op_pattern.back() == OPTR && pattern.back() == KLEENE_STAR     && to_type == OPTR && to_push == LEFT_BRACKET) ||
+                (op_pattern.back() == OPTR && pattern.back() == PLUS            && to_type == OPTR && to_push == LEFT_BRACKET))
+            {
+                op_pattern.push_back(OPTR);
             pattern.push_back(CONCAT);
-        else if (!pattern.empty() && pattern.back() == RIGHT_BRACKET && to_push > ENUM_CNT)
-            pattern.push_back(CONCAT);
-        else if (!pattern.empty() && pattern.back() > ENUM_CNT && to_push == LEFT_BRACKET)
-            pattern.push_back(CONCAT);
-        else if (!pattern.empty() && pattern.back() == RIGHT_BRACKET && to_push == LEFT_BRACKET)
-            pattern.push_back(CONCAT);
-        else if (!pattern.empty() && (pattern.back() == KLEENE_STAR || pattern.back() == PLUS) && to_push == LEFT_BRACKET)
-            pattern.push_back(CONCAT);
-        else if (!pattern.empty() && (pattern.back() == KLEENE_STAR || pattern.back() == PLUS) && to_push > ENUM_CNT)
-            pattern.push_back(CONCAT);
+            }
+        }
+        op_pattern.push_back(to_type);
         pattern.push_back(to_push);
     }
 }
 void RE::print_pattern()
 {
-    for (auto c : pattern)
+    for (int i = 0; i < pattern.length(); i++)
     {
-        if (c > ENUM_CNT)
-            std::cout << c;
+        if (op_pattern[i] == CHAR)
+            if (pattern[i] == '\0')
+                std::cout << "ε";
+            else
+                std::cout << pattern[i];
         else
         {
-            switch (c)
+            switch (pattern[i])
             {
             case UNION:
                 std::cout << "|";
@@ -214,11 +251,12 @@ right = std::move(r);
 }
 RE_tree::RE_tree(RE pattern_obj)
 {
-    std::string pattern = pattern_obj.getPattern();
+    auto pattern = pattern_obj.getPattern().first;
+    auto op_pattern = pattern_obj.getPattern().second;
     assert(pattern.length() != 0);
-    while(drop_global_bracket(pattern));
+    while(drop_global_bracket(pattern, op_pattern));
     int bracket_count = 0;
-    if (pattern.length() == 1)
+    if (pattern.length() == 1 && op_pattern[0] == CHAR)
     {
         op = TERMINAL;
         value = pattern[0];
@@ -228,35 +266,39 @@ RE_tree::RE_tree(RE pattern_obj)
     }
     for (int i = 0; i < pattern.length(); i++)
     {
-        if (pattern[i] == LEFT_BRACKET)
+        if (pattern[i] == LEFT_BRACKET && op_pattern[i] == OPTR)
             bracket_count++;
-        else if (pattern[i] == RIGHT_BRACKET)
+        else if (pattern[i] == RIGHT_BRACKET && op_pattern[i] == OPTR)
             bracket_count--;
         else if (bracket_count == 0)
         {
-            if (pattern[i] == UNION)
+            if (pattern[i] == UNION && op_pattern[i] == OPTR)
             {
                 op = UNION;
-                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
-                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
+                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1), std::vector<bool>(op_pattern.begin() + i + 1, op_pattern.end())));
             }
-            else if (pattern[i] == KLEENE_STAR)
+            else if (pattern[i] == KLEENE_STAR && op_pattern[i] == OPTR)
             {
                 op = KLEENE_STAR;
-                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
                 right = nullptr;
             }
-            else if (pattern[i] == PLUS)
+            else if (pattern[i] == PLUS && op_pattern[i] == OPTR)
             {
                 op = PLUS;
-                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
                 right = nullptr;
             }
-            else if (pattern[i] == CONCAT)
+            else if (pattern[i] == CONCAT && op_pattern[i] == OPTR)
             {
                 op = CONCAT;
-                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i)));
-                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1)));
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
+                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1), std::vector<bool>(op_pattern.begin() + i + 1, op_pattern.end())));
+            }
+            else
+            {
+                continue;
             }
             return;
         }
@@ -265,7 +307,7 @@ RE_tree::RE_tree(RE pattern_obj)
 RE_tree::operator bool() const 
 {
     if(op == TERMINAL)
-        return value >= ENUM_CNT;
+        return 1;
     else if(op == KLEENE_STAR || op == PLUS)
         return left != nullptr;
     else

@@ -13,7 +13,7 @@ typedef std::pair<char, std::shared_ptr<state>> transfer_t;
 
 void trim_inplace(std::string& str);
 
-enum RE_operator
+enum RE_operator    // 操作符类型
 {
     UNION,
     CONCAT,
@@ -23,15 +23,20 @@ enum RE_operator
     RIGHT_BRACKET,
     TERMINAL,
     UTERMINAL,
-    ENUM_CNT
+    UNKNOWN,
+};
+enum RE_char_type   // 操作符 or 字符
+{
+    OPTR,
+    CHAR
 };
 
 class RE;
 
 class RE_tree
 {
-    RE_operator op;
-    char value;
+    RE_operator op = UNKNOWN;
+    char value = 0;
     std::unique_ptr<RE_tree> left;
     std::unique_ptr<RE_tree> right;
     friend class NFA;
@@ -46,13 +51,15 @@ class RE
 {
     std::string str_pattern;
     std::string pattern;
+    std::vector<bool> op_pattern;
     std::vector<std::pair<std::string, std::string>> defination_patterns;
 public:
-    RE(std::string pattern = "");
+    RE(std::string pattern = "", std::vector<bool> op_pattern = {});
     ~RE();
-    std::string getPattern();
+    std::pair<std::string, std::vector<bool>> getPattern();
     void add_pattern_line(std::string input_pattern);
     void merge_patterns();
+    void parse_pattern();
     void print_pattern();
 
 };

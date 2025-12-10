@@ -4,6 +4,22 @@
 int main()
 {
     RE constant_re;
+
+    /*
+     * 该解析器所采用的正则表达式（正则定义）部分语法如下
+     * d  ->  r
+     * 之间必须使用  ->   连接，默认无视空字符
+     * 支持以下基本操作符：
+     * 1. 并（union）：   |
+     * 2. 连接（concatenation）：   .     允许省略
+     * 3. 克林闭包（Kleene star）：   *
+     * 4. 正闭包（plus）：   +
+     * 5. 分组（grouping）：   (   )
+     * 6. 转义字符（escape）：   \   （除常规的 \n 换行 \t 制表符外，针对正则表达式额外支持 \* \+ \. 等表示字符本身）
+     *                               （\\ 则表示反斜杠本身，若反斜杠后跟随无效字符，则不认作转义，正常识别）
+     *                               （\0 表示空串 ε，0 则是字符 0 本身）
+    */
+
     std::string FULL_CONSTANT_PATTERN =
     R"delimiter(constant    -> inte | frac
 
@@ -12,22 +28,22 @@ int main()
     oct_inte    -> 0 oct_digit+
     dec_inte    -> (dec_digit_no_zero) dec_digit* 
     hex_inte    -> 0(x|X) hex_digit+
-    opt_inte_suf     -> @ | unsigned_suf | long_suf | (unsigned_suf long_suf) | (long_suf unsigned_suf)
+    opt_inte_suf     -> \0 | unsigned_suf | long_suf | (unsigned_suf long_suf) | (long_suf unsigned_suf)
     
     frac        -> (dec_frac | hex_frac) opt_frac_suf
     dec_frac    -> dec_base dec_opt_exp
     hex_frac    -> 0(x|X) hex_base hex_opt_exp
     dec_base    -> (dec_digit+ \. dec_digit*) | (dec_digit* \. dec_digit+) | (dec_digit+)
-    dec_opt_exp -> @ | ((e | E) opt_sign dec_inte)
+    dec_opt_exp -> \0 | ((e | E) opt_sign dec_inte)
     hex_base    -> (hex_digit+ \. hex_digit*) | (hex_digit* \. hex_digit+) | (hex_digit+)
-    hex_opt_exp -> @ | ((p | P) opt_sign hex_inte)
-    opt_frac_suf    -> @ | float_suf | long_double_suf
+    hex_opt_exp -> \0 | ((p | P) opt_sign hex_inte)
+    opt_frac_suf    -> \0 | float_suf | long_double_suf
     
     unsigned_suf        -> u | U
     long_suf    -> l | L | ll | LL
     float_suf   -> f | F
     long_double_suf -> l | L
-    opt_sign    -> @ | \+ | -
+    opt_sign    -> \0 | \+ | -
     bin_digit   -> 0 | 1
     oct_digit   -> 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
     dec_digit   -> 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
@@ -41,6 +57,7 @@ int main()
         constant_re.add_pattern_line(line);
     }
     constant_re.merge_patterns();
+    constant_re.parse_pattern();
     constant_re.print_pattern();
 
     RE_tree constant_tree(constant_re);
