@@ -10,6 +10,8 @@
 #include <cassert>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
+#include <set>
 
 enum RE_operator    // 操作符类型
 {
@@ -26,7 +28,7 @@ enum RE_operator    // 操作符类型
 enum RE_char_type   // 操作符 or 字符
 {
     OPTR,
-    CHAR
+    RECHAR
 };
 
 struct state;
@@ -35,7 +37,8 @@ class RE_tree;
 class NFA;
 class DFA;
 
-typedef std::pair<char, std::shared_ptr<state>> transfer_t;
+typedef std::pair<char, std::weak_ptr<state>> transfer_t;
+typedef std::set<std::shared_ptr<state>> state_set_t;
 
 void trim_inplace(std::string& str);
 bool pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<std::string, std::string>& b);
@@ -43,7 +46,7 @@ bool drop_global_bracket(std::string& str, std::vector<bool>& op_pattern);
 
 struct state
 {
-    bool is_final;
+    bool is_final = false;
     std::list<transfer_t> transfers;
 };
 
@@ -54,6 +57,7 @@ class RE_tree
     std::unique_ptr<RE_tree> left;
     std::unique_ptr<RE_tree> right;
     friend class NFA;
+    std::unordered_set<char> terminal_chars;
 public:
     RE_tree(RE_operator oper, char val = 0, std::unique_ptr<RE_tree> l = nullptr, std::unique_ptr<RE_tree> r = nullptr);
     RE_tree(RE pattern_obj);
@@ -67,6 +71,7 @@ class RE
     std::string pattern;
     std::vector<bool> op_pattern;
     std::vector<std::pair<std::string, std::string>> defination_patterns;
+    std::unordered_set<char> terminal_chars;
     std::pair<std::string, std::vector<bool>> getPattern();
     friend class RE_tree;
 public:
@@ -82,6 +87,9 @@ class NFA
 {
     std::shared_ptr<state> start_state;
     std::shared_ptr<state> final_state;
+    std::unordered_set<char> terminal_chars;
+    std::vector<std::shared_ptr<state>> owned_states; // owns all states to keep weak_ptr targets alive
+    friend class DFA;
 public:
     NFA(const RE_tree& re_tree);
     ~NFA();
@@ -96,10 +104,14 @@ public:
 class DFA
 {
     std::shared_ptr<state> start_state;
-    std::shared_ptr<state> final_state;
+    //std::shared_ptr<state> final_state;
+    std::unordered_set<char> terminal_chars;
+    std::vector<std::shared_ptr<state>> owned_states; // owns DFA states
 public:
     ~DFA();
     DFA(const NFA& nfa);
+    state_set_t move(const state_set_t& states, char input);
+    state_set_t epsilon_closure(const state_set_t& states);
     void minimize();
     bool match(const std::string& input);
 };
