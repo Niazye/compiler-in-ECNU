@@ -1,0 +1,30 @@
+{
+  "configurations": [
+    {
+      "name": "CMake",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "configurationProvider": "ms-vscode.cmake-tools",
+      "intelliSenseMode": "gcc-x64",
+      "cStandard": "c17",
+      "cppStandard": "c++14",
+      "includePath": [
+        "${workspaceFolder}/**"
+      ],
+      "defines": [],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/**"
+        ],
+        "limitSymbolsToIncludedHeaders": true,
+        "databaseFilename": ""
+      },
+      "compilerPath": "g++", // 或您的编译器路径
+      "compilerArgs": [
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic"
+      ]
+    }
+  ],
+  "version": 4
+}
