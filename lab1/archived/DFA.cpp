@@ -9,49 +9,69 @@ void trim_inplace(std::string& str) {
     size_t end = str.find_last_not_of(" \t\n\r");
     str = str.substr(start, end - start + 1);
 }
-
-RE::RE(std::string &pattern)
+bool pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<std::string, std::string>& b)
 {
-    std::istringstream pattern_stream(pattern);
-    std::string line;
-    std::vector<std::pair<std::string, std::string>> defination_patterns;
-    while (std::getline(pattern_stream, line))
-    {
-        trim_inplace(line);
-        if (line.empty()) continue;
-        defination_patterns.push_back(split_pattern_line(line));
-    }
-    merge_patterns(defination_patterns);
-    parse_pattern();
+    return a.first.length() > b.first.length();
 }
-RE::RE(std::string &pattern, std::vector<bool> &op_pattern)
+bool drop_global_bracket(std::string& str, std::vector<bool>& op_pattern)
+{
+    if (str.front() == LEFT_BRACKET && str.back() == RIGHT_BRACKET && op_pattern.front() == OPTR && op_pattern.back() == OPTR)
+    {
+        int bracket_count = 0;
+        for (size_t i = 0; i < str.length(); i++)
+        {
+            if (str[i] == LEFT_BRACKET && op_pattern[i] == OPTR)
+                bracket_count++;
+            else if (str[i] == RIGHT_BRACKET && op_pattern[i] == OPTR)
+                bracket_count--;
+            if (bracket_count == 0 && i != str.length() - 1)
+                return 0;
+        }
+        str = str.substr(1, str.length() - 2);
+        op_pattern.erase(op_pattern.begin());
+        op_pattern.pop_back();
+        return 1;
+    }
+    return 0;
+}
+RE::RE(std::string pattern, std::vector<bool> op_pattern)
 {
     this -> pattern = pattern;
     this -> op_pattern = op_pattern;
 }
-bool RE::pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<std::string, std::string>& b)
+RE::RE(std::string pattern)
 {
-    return a.first.length() > b.first.length();
+    std::istringstream pattern_stream(pattern);
+    std::string line;
+    while (std::getline(pattern_stream, line))
+    {
+        if (line.empty()) continue;
+        add_pattern_line(line);
+    }
+    merge_patterns();
+    parse_pattern();
 }
 RE::~RE() {}
 std::pair<std::string, std::vector<bool>> RE::getPattern()
 {
     return {pattern, op_pattern};
 }
-std::pair<std::string, std::string> RE::split_pattern_line(std::string &input_pattern)
+void RE::add_pattern_line(std::string input_pattern)
 {
     std::string def_name, def_pattern;
     trim_inplace(input_pattern);
     if(input_pattern.empty())
-        return {"", ""};
+        return;
     def_name = input_pattern.substr(0, input_pattern.find("->"));
     def_pattern = input_pattern.substr(input_pattern.find("->") + 2);
     trim_inplace(def_name);
     trim_inplace(def_pattern);
-    return {def_name, def_pattern};
+    defination_patterns.push_back({def_name, def_pattern});
 }
-void RE::merge_patterns(std::vector<std::pair<std::string, std::string>> &defination_patterns)
+void RE::merge_patterns()
 {
+    if (defination_patterns.empty() || defination_patterns.size() == 1)
+        return;
     std::sort(defination_patterns.begin() + 1, defination_patterns.end(), pattern_cmp);
     for (size_t i = 1; i < defination_patterns.size(); i++)
     {
@@ -65,12 +85,14 @@ void RE::merge_patterns(std::vector<std::pair<std::string, std::string>> &defina
                 "(" + defination_patterns[i].second + ")");
         }
     }
-    raw_pattern = defination_patterns[0].second;
-    return;
+    defination_patterns.resize(1);
 }
 void RE::parse_pattern()
 {
-    for (auto itr = raw_pattern.begin(); itr != raw_pattern.end(); itr++)
+    if (defination_patterns.empty())
+        return;
+    std::string str_pattern = defination_patterns[0].second;
+    for (auto itr = str_pattern.begin(); itr != str_pattern.end(); itr++)
     {
         if (isspace(*itr))
             continue;
@@ -196,133 +218,118 @@ void RE::parse_pattern()
             terminal_chars.insert(to_push);
     }
 }
-RE RE::postfix_form() const
+void RE::print_pattern()
 {
-    std::stack<std::pair<RE_char_type, RE_operator>> op_stack;
-    std::string postfix_pattern;
-    std::vector<bool> postfix_op_pattern;
-    std::map<RE_operator, int> op_precedence = {
-        {UNION, 1},
-        {CONCAT, 2},
-        {KLEENE_STAR, 3},
-        {PLUS, 3},
-        {LEFT_BRACKET, -1},
-        {RIGHT_BRACKET, -1}
-    };
-    for (size_t i = 0; i < pattern.length(); i++)
-    {
-        if (op_pattern[i] == RECHAR)
-        {
-            postfix_pattern.push_back(pattern[i]);
-            postfix_op_pattern.push_back(RECHAR);
-        }
-        else if (op_pattern[i] == OPTR)
-        {
-            if (pattern[i] == LEFT_BRACKET)
-            {
-                op_stack.push({OPTR, LEFT_BRACKET});
-            }
-            else if (pattern[i] == RIGHT_BRACKET)
-            {
-                while(!op_stack.empty() && op_stack.top() != std::make_pair(OPTR, LEFT_BRACKET))
-                {
-                    postfix_pattern.push_back(op_stack.top().second);
-                    postfix_op_pattern.push_back(OPTR);
-                    op_stack.pop();
-                }
-                op_stack.pop(); // 弹出左括号
-            }
-            else 
-            {
-                while(!op_stack.empty() && (op_stack.top() != std::make_pair(OPTR, LEFT_BRACKET)) &&
-                        op_precedence[op_stack.top().second] >= op_precedence[static_cast<RE_operator>(pattern[i])])
-                {
-                    postfix_pattern.push_back(op_stack.top().second);
-                    postfix_op_pattern.push_back(OPTR);
-                    op_stack.pop();
-                }
-                op_stack.push({OPTR, static_cast<RE_operator>(pattern[i])});
-            }
-        }
-    }
-    while(!op_stack.empty())
-    {
-        postfix_pattern.push_back(op_stack.top().second);
-        postfix_op_pattern.push_back(OPTR);
-        op_stack.pop();
-    }
-    return RE(postfix_pattern, postfix_op_pattern);
+    std::cout << defination_patterns[0].first << " -> " << defination_patterns[0].second << std::endl;
 }
 
-NFA& NFA::operator=(const NFA& other)
+RE_tree::RE_tree(RE_operator oper, char val, std::unique_ptr<RE_tree> l, std::unique_ptr<RE_tree> r)
 {
-    if (this != &other)
+    op = oper;
+    value = val;
+    left = std::move(l);
+    right = std::move(r);
+}
+RE_tree::RE_tree(RE pattern_obj)
+{
+    this -> terminal_chars = pattern_obj.terminal_chars;
+    auto pattern = pattern_obj.getPattern().first;
+    auto op_pattern = pattern_obj.getPattern().second;
+    assert(pattern.length() != 0);
+    while(drop_global_bracket(pattern, op_pattern));
+    int bracket_count = 0;
+    if (pattern.length() == 1 && op_pattern[0] == RECHAR)
     {
-        start_state = other.start_state;
-        final_state = other.final_state;
-        terminal_chars = other.terminal_chars;
-        owned_states = other.owned_states;
+        op = TERMINAL;
+        value = pattern[0];
+        left = nullptr;
+        right = nullptr;
+        return;
     }
-    return *this;
-}
-NFA::NFA(const NFA& other)
-{
-    start_state = other.start_state;
-    final_state = other.final_state;
-    terminal_chars = other.terminal_chars;
-    owned_states = other.owned_states;
-}
-NFA::NFA(const RE& re)
-{
-    RE postfix_re = re.postfix_form();
-    auto re_pattern = postfix_re.getPattern();
-    auto pattern = re_pattern.first;
-    auto op_pattern = re_pattern.second;
-    std::stack<std::unique_ptr<NFA>> nfa_stack;
-
     for (size_t i = 0; i < pattern.length(); i++)
     {
-        if (op_pattern[i] == RECHAR)
+        if (pattern[i] == LEFT_BRACKET && op_pattern[i] == OPTR)
+            bracket_count++;
+        else if (pattern[i] == RIGHT_BRACKET && op_pattern[i] == OPTR)
+            bracket_count--;
+        else if (bracket_count == 0)
         {
-            nfa_stack.push(std::make_unique<NFA>(pattern[i]));
-        }
-        else
-        {
-            if (pattern[i] == UNION)
+            if (pattern[i] == UNION && op_pattern[i] == OPTR)
             {
-                auto right = std::move(nfa_stack.top());
-                nfa_stack.pop();
-                auto left =  std::move(nfa_stack.top());
-                nfa_stack.pop();
-                left -> union_other(*right);
-                nfa_stack.push(std::move(left));
+                op = UNION;
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
+                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1), std::vector<bool>(op_pattern.begin() + i + 1, op_pattern.end())));
             }
-            else if (pattern[i] == CONCAT)
+            else if (pattern[i] == KLEENE_STAR && op_pattern[i] == OPTR && i + 1 == pattern.length())
             {
-                auto right = std::move(nfa_stack.top());
-                nfa_stack.pop();
-                auto left =  std::move(nfa_stack.top());
-                nfa_stack.pop();
-                left -> concat_other(*right);
-                nfa_stack.push(std::move(left));
+                op = KLEENE_STAR;
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
+                right = nullptr;
             }
-            else if (pattern[i] == KLEENE_STAR)
+            else if (pattern[i] == PLUS && op_pattern[i] == OPTR && i + 1 == pattern.length())
             {
-                auto top = std::move(nfa_stack.top());
-                nfa_stack.pop();
-                top -> kleene_star();
-                nfa_stack.push(std::move(top));
+                op = PLUS;
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
+                right = nullptr;
             }
-            else if (pattern[i] == PLUS)
+            else if (pattern[i] == CONCAT && op_pattern[i] == OPTR)
             {
-                auto top = std::move(nfa_stack.top());
-                nfa_stack.pop();
-                top -> plus();
-                nfa_stack.push(std::move(top));
+                op = CONCAT;
+                left = std::make_unique<RE_tree>(RE(pattern.substr(0, i), std::vector<bool>(op_pattern.begin(), op_pattern.begin() + i)));
+                right = std::make_unique<RE_tree>(RE(pattern.substr(i + 1), std::vector<bool>(op_pattern.begin() + i + 1, op_pattern.end())));
             }
+            else
+            {
+                continue;
+            }
+            return;
         }
     }
-    *this = *(nfa_stack.top());
+
+}
+RE_tree::operator bool() const 
+{
+    if(op == TERMINAL)
+        return 1;
+    else if(op == KLEENE_STAR || op == PLUS)
+        return left != nullptr;
+    else
+        return left != nullptr && right != nullptr; 
+}
+RE_tree::~RE_tree()
+{
+}
+
+NFA::NFA(const RE_tree& re_tree)
+{
+    assert(re_tree);
+    std::unique_ptr<NFA> left, right;
+    switch (re_tree.op)
+    {
+        case TERMINAL:
+            *this = NFA(re_tree.value);
+            break;
+        case UNION:
+            *this = NFA(*re_tree.left);
+            this -> union_other(NFA(*re_tree.right));
+            break;
+        case CONCAT:
+            *this = NFA(*re_tree.left);
+            this -> concat_other(NFA(*re_tree.right));
+            break;
+        case KLEENE_STAR:
+            *this = NFA(*re_tree.left);
+            this -> kleene_star();
+            break;
+        case PLUS:
+            *this = NFA(*re_tree.left);
+            this -> plus();
+            break;
+        default:
+            break;
+    }
+
+    this -> terminal_chars = re_tree.terminal_chars;
 }
 NFA::NFA(const char terminal)
 {
@@ -341,32 +348,34 @@ NFA::NFA(const char terminal)
 }
 bool NFA::union_other(const NFA& other)
 {
+    auto copyed_other = NFA(other);
     std::shared_ptr<nfa_state> new_start_state = std::make_shared<nfa_state>(), new_final_state = std::make_shared<nfa_state>();
     owned_states.push_back(new_start_state);
     owned_states.push_back(new_final_state);
-    owned_states.insert(owned_states.end(), other.owned_states.begin(), other.owned_states.end());
+    owned_states.insert(owned_states.end(), copyed_other.owned_states.begin(), copyed_other.owned_states.end());
     new_start_state -> is_final = 0;
     new_final_state -> is_final = 1;
     new_start_state -> transfers.insert({'\0', this -> start_state});
-    new_start_state -> transfers.insert({'\0', other.start_state});
+    new_start_state -> transfers.insert({'\0', copyed_other.start_state});
     this -> final_state -> is_final = 0;
     this -> final_state -> transfers.insert({'\0', new_final_state});
-    other.final_state -> is_final = 0;
-    other.final_state -> transfers.insert({'\0', new_final_state});
+    copyed_other.final_state -> is_final = 0;
+    copyed_other.final_state -> transfers.insert({'\0', new_final_state});
     this -> start_state = new_start_state;
     this -> final_state = new_final_state;
 
-    this -> terminal_chars.insert(other.terminal_chars.begin(), other.terminal_chars.end());
+    this -> terminal_chars.insert(copyed_other.terminal_chars.begin(), copyed_other.terminal_chars.end());
     return true;
 }
 bool NFA::concat_other(const NFA& other)
 {
-    owned_states.insert(owned_states.end(), other.owned_states.begin(), other.owned_states.end());
+    auto copyed_other = NFA(other);
+    owned_states.insert(owned_states.end(), copyed_other.owned_states.begin(), copyed_other.owned_states.end());
     this -> final_state -> is_final = 0;
-    this -> final_state -> transfers.insert({'\0', other.start_state});
-    this -> final_state = other.final_state;
+    this -> final_state -> transfers.insert({'\0', copyed_other.start_state});
+    this -> final_state = copyed_other.final_state;
 
-    this -> terminal_chars.insert(other.terminal_chars.begin(), other.terminal_chars.end());
+    this -> terminal_chars.insert(copyed_other.terminal_chars.begin(), copyed_other.terminal_chars.end());
     return true;
 }
 bool NFA::kleene_star()
@@ -387,21 +396,75 @@ bool NFA::kleene_star()
 }
 bool NFA::plus()
 {
-    auto new_start_state = std::make_shared<nfa_state>(), new_final_state = std::make_shared<nfa_state>();
-    owned_states.push_back(new_start_state);
-    owned_states.push_back(new_final_state);
-    new_start_state -> is_final = 0;
-    new_final_state -> is_final = 1;
-    new_start_state -> transfers.insert({'\0', this -> start_state});
-    this -> final_state -> is_final = 0;
-    this -> final_state -> transfers.insert({'\0', this -> start_state});
-    this -> final_state -> transfers.insert({'\0', new_final_state});
-    this -> start_state = new_start_state;
-    this -> final_state = new_final_state;
+    auto other = NFA(*this);
+    kleene_star();
+    concat_other(other);
     return true;
 }
 NFA::~NFA()
 {
+}
+NFA::NFA(const NFA& other)
+{
+    std::queue<std::shared_ptr<nfa_state>> to_visit;
+    std::unordered_map<std::shared_ptr<nfa_state>, std::shared_ptr<nfa_state>> copyed_state_map;
+
+    std::shared_ptr<nfa_state> new_start_state = std::make_shared<nfa_state>();
+    owned_states.push_back(new_start_state);
+    new_start_state -> is_final = other.start_state -> is_final;
+    copyed_state_map[other.start_state] = new_start_state;
+    for (auto& transfer: other.start_state -> transfers)
+    {
+        auto target = transfer.second.lock();
+        if (!target) continue;
+        std::shared_ptr<nfa_state> new_transfer_state = std::make_shared<nfa_state>();
+        owned_states.push_back(new_transfer_state);
+        copyed_state_map[target] = new_transfer_state;
+        new_start_state -> transfers.insert({transfer.first, new_transfer_state});
+        to_visit.push(target);
+        new_transfer_state -> is_final = target -> is_final;
+    }
+
+    while (!to_visit.empty()) 
+    {
+        auto cur_old_state = to_visit.front();
+        to_visit.pop();
+
+        auto copyed_cur_state = copyed_state_map[cur_old_state];
+        copyed_cur_state -> is_final = cur_old_state -> is_final;
+        for (auto& transfer: cur_old_state -> transfers)
+        {
+            auto target = transfer.second.lock();
+            if (!target) continue;
+            if (copyed_state_map.find(target) == copyed_state_map.end())
+            {
+                copyed_state_map[target] = std::make_shared<nfa_state>();
+                owned_states.push_back(copyed_state_map[target]);
+                to_visit.push(target);
+            }
+            auto &new_transdef_state = copyed_state_map[target];
+            copyed_cur_state -> transfers.insert({transfer.first, new_transdef_state});
+            new_transdef_state -> is_final = target -> is_final;            
+        }
+    }
+    this -> start_state = new_start_state;
+    this -> final_state = copyed_state_map[other.final_state];
+
+    this -> terminal_chars = other.terminal_chars;
+}
+void NFA::swap(NFA& first, NFA& second)
+{
+    using std::swap;
+    swap(first.start_state, second.start_state);
+    swap(first.final_state, second.final_state);
+    swap(first.terminal_chars, second.terminal_chars);
+    swap(first.owned_states, second.owned_states);
+}
+NFA& NFA::operator=(const NFA& other)
+{
+    NFA copyed_other(other);
+    swap(*this, copyed_other);
+    return *this;
 }
 
 DFA::DFA(const NFA& nfa)
@@ -449,42 +512,6 @@ DFA::DFA(const NFA& nfa)
         }
     }
 }
-DFA::DFA(const std::string &import_str)
-{
-    std::istringstream import_stream(import_str);
-    std::string line;
-    std::getline(import_stream, line);
-    owned_states.resize(std::stoi(line));
-    std::getline(import_stream, line);
-    for (size_t i = 0; i < line.length(); i++)
-    {
-        if(line[i] == '0')
-        {
-            owned_states[i] = std::make_shared<dfa_state>();
-            owned_states[i] -> is_final = 0;
-        }
-        else
-        {
-            owned_states[i] = std::make_shared<dfa_state>();
-            owned_states[i] -> is_final = 1;
-        }
-    }
-    while (std::getline(import_stream, line))
-    {
-        std::istringstream line_stream(line);
-        int cur_state_id;
-        line_stream >> cur_state_id;
-        auto cur_state = owned_states[cur_state_id];
-        int ch;
-        int target_state_id;
-        while(line_stream >> ch >> target_state_id)
-        {
-            cur_state -> transfers[char(ch)] = owned_states[target_state_id];
-            terminal_chars.insert(char(ch));
-        }
-    }
-    this -> start_state = owned_states[0];
-}
 nfa_state_set_t DFA::move(const nfa_state_set_t& states, char input)
 {
     nfa_state_set_t result;
@@ -529,6 +556,7 @@ size_t DFA::longest_match(const std::string& input, size_t start_pos)
 {
     auto current_states = start_state;
     size_t matched_length = 0;
+    size_t last_final_pos = start_pos;
     for (size_t i = start_pos; i < input.length(); i++)
     {
         bool transitioned = false;
@@ -543,6 +571,10 @@ size_t DFA::longest_match(const std::string& input, size_t start_pos)
                 current_states = target;
                 transitioned = true;
                 matched_length++;
+                if (current_states -> is_final)
+                {
+                    last_final_pos = start_pos + matched_length;
+                }
                 break;
             }
         }
@@ -551,7 +583,7 @@ size_t DFA::longest_match(const std::string& input, size_t start_pos)
             break;
     }
 
-    return matched_length;
+    return last_final_pos - start_pos;
 }
 bool DFA::all_match(const std::string& input, size_t start_pos)
 {
@@ -581,42 +613,4 @@ bool DFA::all_match(const std::string& input, size_t start_pos)
 }
 DFA::~DFA()
 {
-}
-std::string DFA::export2str()
-{
-    int state_cnt = owned_states.size();
-    std::ostringstream export_stream;
-    export_stream << state_cnt << "\n";
-    std::map<std::shared_ptr<dfa_state>, int> state2id_map;
-    for (size_t i = 0; i < owned_states.size(); i++)
-    {
-        state2id_map[owned_states[i]] = i;
-    }
-    std::string is_final_line;
-    for (size_t i = 0; i < owned_states.size(); i++)
-    {
-        if (owned_states[i] -> is_final)
-            is_final_line.push_back('1');
-        else
-            is_final_line.push_back('0');
-    }
-    export_stream << is_final_line << "\n";
-    for (size_t i = 0; i < owned_states.size(); i++)
-    {
-        auto cur_state = owned_states[i];
-        std::string transfer_line = std::to_string(i) + " ";
-        for (const auto& transfer_pair: cur_state -> transfers)
-        {
-            auto target = transfer_pair.second.lock();
-            if (target)
-            {
-                transfer_line += std::to_string(int(transfer_pair.first));
-                transfer_line += " ";
-                transfer_line += std::to_string(state2id_map[target]);
-                transfer_line += " ";
-            }
-        }
-        export_stream << transfer_line << "\n";
-    }
-    return export_stream.str();
 }

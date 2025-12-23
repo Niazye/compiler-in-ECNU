@@ -1,0 +1,1 @@
+int main(){char c = "h";/* 注释 12313test */if (c=="h")printf("%c",c);else print("k");return 0;}

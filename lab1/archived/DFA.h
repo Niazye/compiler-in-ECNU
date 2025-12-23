@@ -42,6 +42,8 @@ typedef std::pair<char, std::weak_ptr<dfa_state>> dfa_transfer_t;
 typedef std::set<std::shared_ptr<nfa_state>> nfa_state_set_t;
 
 void trim_inplace(std::string& str);
+bool pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<std::string, std::string>& b);
+bool drop_global_bracket(std::string& str, std::vector<bool>& op_pattern);
 
 struct nfa_state
 {
@@ -54,23 +56,37 @@ struct dfa_state
     std::map<char, std::weak_ptr<dfa_state>> transfers;
 };
 
+class RE_tree
+{
+    RE_operator op;
+    char value = 0;
+    std::unique_ptr<RE_tree> left;
+    std::unique_ptr<RE_tree> right;
+    friend class NFA;
+    std::unordered_set<char> terminal_chars;
+public:
+    RE_tree(RE_operator oper, char val = 0, std::unique_ptr<RE_tree> l = nullptr, std::unique_ptr<RE_tree> r = nullptr);
+    RE_tree(RE pattern_obj);
+    ~RE_tree();
+    operator bool() const;
+};
+
 class RE
 {
     std::string pattern;
     std::vector<bool> op_pattern;
+    std::vector<std::pair<std::string, std::string>> defination_patterns;
     std::unordered_set<char> terminal_chars;
-    std::string raw_pattern;
-    friend class RE_tree;
-    static std::pair<std::string, std::string> split_pattern_line(std::string &input_pattern);
-    static bool pattern_cmp(const std::pair<std::string, std::string>& a, const std::pair<std::string, std::string>& b);
-    void merge_patterns(std::vector<std::pair<std::string, std::string>> &defination_patterns);
-    void parse_pattern();
-public:
     std::pair<std::string, std::vector<bool>> getPattern();
-    RE(std::string &pattern);
-    RE(std::string &pattern, std::vector<bool> &op_pattern);
+    friend class RE_tree;
+public:
+    RE(std::string pattern, std::vector<bool> op_pattern);
+    RE(std::string pattern = "");
     ~RE();
-    RE postfix_form() const;\
+    void add_pattern_line(std::string input_pattern);
+    void merge_patterns();
+    void parse_pattern();
+    void print_pattern();
 };
 
 class NFA
@@ -79,9 +95,10 @@ class NFA
     std::shared_ptr<nfa_state> final_state;
     std::unordered_set<char> terminal_chars;
     std::vector<std::shared_ptr<nfa_state>> owned_states; // owns all states to keep weak_ptr targets alive
+    static void swap(NFA& first, NFA& second);
     friend class DFA;
 public:
-    NFA(const RE& re);
+    NFA(const RE_tree& re_tree);
     ~NFA();
     NFA(const NFA& other);
     NFA(const char terminal);
@@ -100,13 +117,10 @@ class DFA
 public:
     ~DFA();
     DFA(const NFA& nfa);
-    DFA(const std::string &import_str);
-
     nfa_state_set_t move(const nfa_state_set_t& states, char input);
     nfa_state_set_t epsilon_closure(const nfa_state_set_t& states);
     bool all_match(const std::string& input, size_t start_pos = 0);
     size_t longest_match(const std::string& input, size_t start_pos = 0);
-    std::string export2str();
 };
 
 #endif

@@ -41,6 +41,7 @@ void print_single_token(const resolved_token_t token, int index);
 
 DFA constant_dfa = DFA(NFA(RE(EXPAND_CONSTANT_PATTERN)));
 DFA identifier_dfa = DFA(NFA(RE(EXPAND_IDENTIFIER_PATTERN)));
+
 class LexAnalyser
 {
 private:
@@ -121,11 +122,10 @@ private:
         token_t res;
         res.first = CONSTANT;
         res.second = prog.substr(start_pos, match_length);
-        if (!constant_dfa.all_match(res.second))
+        if (constant_dfa.all_match(res.second))
         {
-            return {UNKNOWN, ""};
+            pos += match_length;
         }
-        pos += match_length;
         return res;
     }
 

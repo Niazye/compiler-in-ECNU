@@ -1,0 +1,25 @@
+bool gofor(char& ch, string& pos, const string& prog)
+
+{
+
+	++pos;
+
+	if (pos >= prog.size())
+
+	{
+
+		return false;
+
+	}
+
+	else
+
+	{
+
+		ch = prog[pos];
+
+		return true;
+
+	}
+
+}

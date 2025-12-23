@@ -26,36 +26,22 @@ int main()
     // constant_re -> print_pattern();
     // identifier_re -> print_pattern();
     // return 0;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    auto constant_re = RE(CONSTANT_PATTERN);
+    auto t1 = std::chrono::high_resolution_clock::now();
 
-    std::string constant_dfa_str;
-    std::string identifier_dfa_str;
-    std::ifstream f("dfa_constant.txt");
-    std::stringstream buffer;
-    buffer << f.rdbuf();
-    constant_dfa_str = buffer.str();
-    f.close();
-    f.open("dfa_identifier.txt");
-    buffer.str(std::string());
-    buffer << f.rdbuf();
-    identifier_dfa_str = buffer.str();
+    NFA constant_nfa = NFA(constant_re);
+    auto t2 = std::chrono::high_resolution_clock::now();
 
-    auto constant_dfa1 = DFA(constant_dfa_str);
-    auto constant_dfa2 = DFA(NFA(RE(CONSTANT_PATTERN)));
+    DFA constant_dfa = DFA(constant_nfa);
+    auto t3 = std::chrono::high_resolution_clock::now();
 
-    std::string line;
-    while(std::cin >> line)
-    {
-        if(constant_dfa1.all_match(line))
-            std::cout << line << " is a constant (from imported DFA)." << std::endl;
-        else
-            std::cout << line << " is NOT a constant (from imported DFA)." << std::endl;
-
-        if(constant_dfa2.all_match(line))
-            std::cout << line << " is a constant (from constructed DFA)." << std::endl;
-        else
-            std::cout << line << " is NOT a constant (from constructed DFA)." << std::endl;
-
-    }
+    const auto re_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    const auto nfa_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    const auto dfa_us = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+    std::cout << "Build timings (microseconds) - RE: " << re_us
+              << ", NFA: " << nfa_us
+              << ", DFA: " << dfa_us << std::endl;
     return 0;
     
 }
