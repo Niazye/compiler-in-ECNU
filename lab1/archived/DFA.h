@@ -38,7 +38,6 @@ class NFA;
 class DFA;
 
 typedef std::pair<char, std::weak_ptr<nfa_state>> nfa_transfer_t;
-typedef std::pair<char, std::weak_ptr<dfa_state>> dfa_transfer_t;
 typedef std::set<std::shared_ptr<nfa_state>> nfa_state_set_t;
 
 void trim_inplace(std::string& str);

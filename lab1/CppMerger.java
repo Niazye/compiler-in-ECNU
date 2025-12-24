@@ -40,8 +40,11 @@ public class CppMerger {
 
 			List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
 
-			body.append("// ---- BEGIN ").append(name).append(" ----\n");
-			for (String line : lines) {
+			body.append("/* ---- BEGIN ").append(name).append(" ---- */\n");
+
+			String guardMacro = null; // track include guard to drop only that guard
+			for (int idx = 0; idx < lines.size(); idx++) {
+				String line = lines.get(idx);
 				String trimmed = line.trim();
 
 				// 收集系统头文件，跳过本地头的 include
@@ -52,14 +55,35 @@ public class CppMerger {
 					continue;
 				}
 
-				// 跳过常见的头文件保护行
-				if (trimmed.startsWith("#ifndef") || trimmed.startsWith("#define") || trimmed.startsWith("#endif")) {
+				// 检测并跳过头文件保护（条件编译保留，只有 include guard 被去掉）
+				if (guardMacro == null && trimmed.startsWith("#ifndef")) {
+					String macro = trimmed.substring("#ifndef".length()).trim();
+					int lookahead = idx + 1;
+					while (lookahead < lines.size() && lines.get(lookahead).trim().isEmpty()) {
+						lookahead++;
+					}
+					if (lookahead < lines.size()) {
+						String nextTrim = lines.get(lookahead).trim();
+						if (nextTrim.startsWith("#define")) {
+							String macro2 = nextTrim.substring("#define".length()).trim();
+							if (macro.equals(macro2) && !macro.isEmpty()) {
+								guardMacro = macro;
+								idx = lookahead; // skip both lines
+								continue;
+							}
+						}
+					}
+				}
+
+				if (guardMacro != null && trimmed.startsWith("#endif")) {
+					guardMacro = null; // skip the matching endif of guard
 					continue;
 				}
 
+				// 非 guard 的条件编译全部保留
 				body.append(line).append('\n');
 			}
-			body.append("// ---- END ").append(name).append(" ----\n\n");
+			body.append("/* ---- END ").append(name).append(" ---- */\n\n");
 		}
 
 		StringBuilder out = new StringBuilder();

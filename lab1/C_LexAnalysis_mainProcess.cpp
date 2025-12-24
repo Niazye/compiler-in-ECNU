@@ -1,4 +1,4 @@
-#include "LexAnalysis.h"
+#include "merged.cpp"
 int main()
 {
 	Analysis(); 

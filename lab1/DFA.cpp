@@ -1,4 +1,5 @@
 #include "DFA.h"
+#include <numeric>
 
 void trim_inplace(std::string& str) {
     size_t start = str.find_first_not_of(" \t\n\r");
@@ -10,6 +11,7 @@ void trim_inplace(std::string& str) {
     str = str.substr(start, end - start + 1);
 }
 
+#ifndef DFA_ONLY
 RE::RE(std::string &pattern)
 {
     std::istringstream pattern_stream(pattern);
@@ -403,7 +405,49 @@ bool NFA::plus()
 NFA::~NFA()
 {
 }
+#endif
 
+#ifndef DFA_ONLY
+nfa_state_set_t DFA::move(const nfa_state_set_t& states, char input)
+{
+    nfa_state_set_t result;
+    for (const auto& st: states)
+    {
+        auto valid_transfers = st -> transfers.equal_range(input);
+        for (auto itr = valid_transfers.first; itr != valid_transfers.second; itr++)
+        {
+            auto target = itr -> second.lock();
+            if (target)
+                result.insert(target);
+        }
+    }
+    return result;
+}
+nfa_state_set_t DFA::epsilon_closure(const nfa_state_set_t& states)
+{
+    nfa_state_set_t result = states;
+    std::queue<std::shared_ptr<nfa_state>> q;
+    for (const auto& st: states)
+    {
+        q.push(st);
+    }
+    while (!q.empty())
+    {
+        auto cur = q.front();
+        q.pop();
+        auto valid_transfers = cur -> transfers.equal_range('\0');
+        for (auto itr = valid_transfers.first; itr != valid_transfers.second; itr++)
+        {
+            auto target = itr -> second.lock();
+            if (target && result.find(target) == result.end())
+            {
+                result.insert(target);
+                q.push(target);
+            }
+        }
+    }
+    return result;
+}
 DFA::DFA(const NFA& nfa)
 {
     this -> terminal_chars.insert(nfa.terminal_chars.begin(), nfa.terminal_chars.end());
@@ -448,12 +492,194 @@ DFA::DFA(const NFA& nfa)
             }
         }
     }
+
+    this -> minimize();
 }
+void DFA::minimize()
+{
+    if (!start_state || owned_states.empty())
+        return;
+
+    // Step 1: remove unreachable states so we do not keep dead nodes around.
+    std::queue<std::shared_ptr<dfa_state>> q;
+    std::unordered_set<std::shared_ptr<dfa_state>> reachable;
+    q.push(start_state);
+    reachable.insert(start_state);
+    while (!q.empty())
+    {
+        auto cur = q.front();
+        q.pop();
+        for (const auto &tr : cur->transfers)
+        {
+            auto target = tr.second.lock();
+            if (target && !reachable.count(target))
+            {
+                reachable.insert(target);
+                q.push(target);
+            }
+        }
+    }
+
+    std::vector<std::shared_ptr<dfa_state>> states;
+    states.reserve(reachable.size());
+    for (const auto &st : owned_states)
+    {
+        if (reachable.count(st))
+            states.push_back(st);
+    }
+
+    if (states.size() <= 1)
+    {
+        owned_states = std::move(states);
+        return;
+    }
+
+    // Build index mapping for table-driven minimization.
+    std::unordered_map<std::shared_ptr<dfa_state>, int> id_map;
+    for (size_t i = 0; i < states.size(); i++)
+        id_map[states[i]] = static_cast<int>(i);
+
+    // Precompute transitions as indices; missing transitions stay at -1 (implicit sink).
+    std::vector<std::unordered_map<char, int>> trans(states.size());
+    for (size_t i = 0; i < states.size(); i++)
+    {
+        for (const auto &tr : states[i]->transfers)
+        {
+            auto target = tr.second.lock();
+            auto itr = id_map.find(target);
+            if (target && itr != id_map.end())
+                trans[i][tr.first] = itr->second;
+        }
+    }
+
+    const size_t n = states.size();
+    std::vector<std::vector<bool>> distinguish(n, std::vector<bool>(n, false));
+
+    // Initialize distinguishing table: final vs non-final.
+    for (size_t i = 0; i < n; i++)
+    {
+        for (size_t j = i + 1; j < n; j++)
+        {
+            if (states[i]->is_final != states[j]->is_final)
+            {
+                distinguish[i][j] = true;
+                distinguish[j][i] = true;
+            }
+        }
+    }
+
+    bool updated = true;
+    while (updated)
+    {
+        updated = false;
+        for (size_t i = 0; i < n; i++)
+        {
+            for (size_t j = i + 1; j < n; j++)
+            {
+                if (distinguish[i][j])
+                    continue;
+
+                for (const auto &ch : terminal_chars)
+                {
+                    auto it_i = trans[i].find(ch);
+                    auto it_j = trans[j].find(ch);
+                    int ti = (it_i == trans[i].end()) ? -1 : it_i->second;
+                    int tj = (it_j == trans[j].end()) ? -1 : it_j->second;
+
+                    if (ti == -1 && tj == -1)
+                        continue;
+
+                    if (ti == -1 || tj == -1)
+                    {
+                        distinguish[i][j] = distinguish[j][i] = true;
+                        updated = true;
+                        break;
+                    }
+
+                    size_t a = std::min(ti, tj);
+                    size_t b = std::max(ti, tj);
+                    if (distinguish[a][b])
+                    {
+                        distinguish[i][j] = distinguish[j][i] = true;
+                        updated = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Union-find to merge indistinguishable states.
+    std::vector<int> parent(n);
+    std::iota(parent.begin(), parent.end(), 0);
+
+    std::function<int(int)> find = [&](int x) -> int
+    {
+        return parent[x] == x ? x : parent[x] = find(parent[x]);
+    };
+
+    auto unite = [&](int a, int b)
+    {
+        a = find(a);
+        b = find(b);
+        if (a != b)
+            parent[b] = a;
+    };
+
+    for (size_t i = 0; i < n; i++)
+    {
+        for (size_t j = i + 1; j < n; j++)
+        {
+            if (!distinguish[i][j])
+                unite(static_cast<int>(i), static_cast<int>(j));
+        }
+    }
+
+    // Build new minimized DFA states.
+    std::unordered_map<int, int> rep2idx;
+    std::vector<std::shared_ptr<dfa_state>> new_states;
+
+    for (size_t i = 0; i < n; i++)
+    {
+        int rep = find(static_cast<int>(i));
+        if (rep2idx.find(rep) == rep2idx.end())
+        {
+            rep2idx[rep] = static_cast<int>(new_states.size());
+            auto ns = std::make_shared<dfa_state>();
+            ns->is_final = states[i]->is_final;
+            new_states.push_back(ns);
+        }
+        else if (states[i]->is_final)
+        {
+            new_states[rep2idx[rep]]->is_final = true;
+        }
+    }
+
+    for (size_t i = 0; i < n; i++)
+    {
+        int rep_src = find(static_cast<int>(i));
+        auto src_state = new_states[rep2idx[rep_src]];
+        for (const auto &tr : trans[i])
+        {
+            int rep_dst = find(tr.second);
+            src_state->transfers[tr.first] = new_states[rep2idx[rep_dst]];
+        }
+    }
+
+    // Update start and owned states.
+    int start_idx = id_map[start_state];
+    int start_rep = find(start_idx);
+    start_state = new_states[rep2idx[start_rep]];
+    owned_states = std::move(new_states);
+}
+#endif
+
 DFA::DFA(const std::string &import_str)
 {
     std::istringstream import_stream(import_str);
     std::string line;
-    std::getline(import_stream, line);
+    while(line.empty())
+        std::getline(import_stream, line);
     owned_states.resize(std::stoi(line));
     std::getline(import_stream, line);
     for (size_t i = 0; i < line.length(); i++)
@@ -484,46 +710,7 @@ DFA::DFA(const std::string &import_str)
         }
     }
     this -> start_state = owned_states[0];
-}
-nfa_state_set_t DFA::move(const nfa_state_set_t& states, char input)
-{
-    nfa_state_set_t result;
-    for (const auto& st: states)
-    {
-        auto valid_transfers = st -> transfers.equal_range(input);
-        for (auto itr = valid_transfers.first; itr != valid_transfers.second; itr++)
-        {
-            auto target = itr -> second.lock();
-            if (target)
-                result.insert(target);
-        }
-    }
-    return result;
-}
-nfa_state_set_t DFA::epsilon_closure(const nfa_state_set_t& states)
-{
-    nfa_state_set_t result = states;
-    std::queue<std::shared_ptr<nfa_state>> q;
-    for (const auto& st: states)
-    {
-        q.push(st);
-    }
-    while (!q.empty())
-    {
-        auto cur = q.front();
-        q.pop();
-        auto valid_transfers = cur -> transfers.equal_range('\0');
-        for (auto itr = valid_transfers.first; itr != valid_transfers.second; itr++)
-        {
-            auto target = itr -> second.lock();
-            if (target && result.find(target) == result.end())
-            {
-                result.insert(target);
-                q.push(target);
-            }
-        }
-    }
-    return result;
+    this -> minimize();
 }
 size_t DFA::longest_match(const std::string& input, size_t start_pos)
 {

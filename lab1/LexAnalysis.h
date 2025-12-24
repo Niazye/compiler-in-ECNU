@@ -1,4 +1,5 @@
 // C语言词法分析器
+#define DFA_ONLY
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -39,8 +40,14 @@ void read_prog(string &prog)
 
 void print_single_token(const resolved_token_t token, int index);
 
+#ifndef DFA_ONLY
 DFA constant_dfa = DFA(NFA(RE(EXPAND_CONSTANT_PATTERN)));
 DFA identifier_dfa = DFA(NFA(RE(EXPAND_IDENTIFIER_PATTERN)));
+#else
+DFA constant_dfa = DFA(CONSTANT_DFA);
+DFA identifier_dfa = DFA(IDENTIFIER_DFA);
+#endif
+
 class LexAnalyser
 {
 private:

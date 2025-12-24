@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <set>
 
+#ifndef DFA_ONLY
 enum RE_operator    // 操作符类型
 {
     UNION,
@@ -38,7 +39,6 @@ class NFA;
 class DFA;
 
 typedef std::pair<char, std::weak_ptr<nfa_state>> nfa_transfer_t;
-typedef std::pair<char, std::weak_ptr<dfa_state>> dfa_transfer_t;
 typedef std::set<std::shared_ptr<nfa_state>> nfa_state_set_t;
 
 void trim_inplace(std::string& str);
@@ -47,11 +47,6 @@ struct nfa_state
 {
     bool is_final = false;
     std::multimap<char, std::weak_ptr<nfa_state>> transfers;
-};
-struct dfa_state
-{
-    bool is_final = false;
-    std::map<char, std::weak_ptr<dfa_state>> transfers;
 };
 
 class RE
@@ -70,7 +65,7 @@ public:
     RE(std::string &pattern);
     RE(std::string &pattern, std::vector<bool> &op_pattern);
     ~RE();
-    RE postfix_form() const;\
+    RE postfix_form() const;
 };
 
 class NFA
@@ -83,13 +78,20 @@ class NFA
 public:
     NFA(const RE& re);
     ~NFA();
-    NFA(const NFA& other);
     NFA(const char terminal);
+    NFA(const NFA& other);
     NFA& operator=(const NFA& other);
     bool union_other(const NFA& other);
     bool concat_other(const NFA& other);
     bool kleene_star();
     bool plus();
+};
+#endif
+
+struct dfa_state
+{
+    bool is_final = false;
+    std::map<char, std::weak_ptr<dfa_state>> transfers;
 };
 
 class DFA
@@ -97,16 +99,22 @@ class DFA
     std::shared_ptr<dfa_state> start_state;
     std::unordered_set<char> terminal_chars;
     std::vector<std::shared_ptr<dfa_state>> owned_states; // owns DFA states
-public:
-    ~DFA();
-    DFA(const NFA& nfa);
-    DFA(const std::string &import_str);
-
+#ifndef DFA_ONLY
     nfa_state_set_t move(const nfa_state_set_t& states, char input);
     nfa_state_set_t epsilon_closure(const nfa_state_set_t& states);
+    void minimize();
+#endif
+
+public:
+    ~DFA();
+    DFA(const std::string &import_str);
     bool all_match(const std::string& input, size_t start_pos = 0);
     size_t longest_match(const std::string& input, size_t start_pos = 0);
     std::string export2str();
+    
+#ifndef DFA_ONLY
+    DFA(const NFA& nfa);
+#endif
 };
 
 #endif
